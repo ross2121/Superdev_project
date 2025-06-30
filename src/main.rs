@@ -440,7 +440,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .app_data(web::Data::new(Statename{app_name:String::from("test")}))
             .service(hello)
-            .service(airdrops)
             .service(keypair)
             .service(create_token)
             .service(mint_token)
