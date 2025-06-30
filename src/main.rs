@@ -75,38 +75,7 @@ fn json_error_handler(_err: actix_web::error::JsonPayloadError, _req: &actix_web
     }))
 }
 
-#[get("/address/{pubkey}")]
-async fn getbalance(path: web::Path<String>) -> impl Responder{
-    let pubkey = path.into_inner();
-    const RPC_URL: &str = "https://api.devnet.solana.com"; 
-    let client = RpcClient::new(RPC_URL);
-    let pubkeys = match Pubkey::from_str(&pubkey){
-        Ok(key) => key,
-        Err(_e) => return HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "Invalid pubkey"
-        }))
-    };
-    match task::spawn_blocking(move || {
-        client.get_balance(&pubkeys)
-    }).await {
-        Ok(Ok(balance)) => HttpResponse::Ok().json(json!({
-            "success": true,
-            "data": {
-                "pubkey": pubkey,
-                "balance": balance as f64 / 1_000_000_000.0
-            }
-        })),
-        Ok(Err(_e)) => HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "RPC error"
-        })),
-        Err(_) => HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "Blocking task failed"
-        })),
-    }
-}
+
 
 #[post("/keypair")]
 async fn keypair() -> impl Responder{
@@ -122,38 +91,7 @@ async fn keypair() -> impl Responder{
     }))
 }
 
-#[get("/infos")]
-async fn info(query: web::Query<Info>) -> impl Responder{
-    let pubkey = &query.pubkey;
-    let pubkey_parsed = match Pubkey::from_str(&pubkey){
-        Ok(key) => key,
-        Err(_e) => return HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "Invalid pubkey"
-        }))
-    };
-    const RPC_URL: &str = "https://api.devnet.solana.com";
-    let client = RpcClient::new(RPC_URL);
-    match task::spawn_blocking(move || {
-        client.get_balance(&pubkey_parsed)
-    }).await {
-        Ok(Ok(balance)) => HttpResponse::Ok().json(json!({
-            "success": true,
-            "data": {
-                "pubkey": pubkey,
-                "balance": balance as f64 / 1_000_000_000.0
-            }
-        })),
-        Ok(Err(_e)) => HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "RPC error"
-        })),
-        Err(_) => HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "Blocking task failed"
-        })),
-    }
-} 
+
 
 #[get("/")]
 async fn hello() -> impl Responder{
@@ -531,8 +469,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(Statename{app_name:String::from("test")}))
             .service(hello)
             .service(airdrops)
-            .service(getbalance)
-            .service(info)
             .service(keypair)
             .service(create_token)
             .service(mint_token)
