@@ -1,41 +1,30 @@
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, Result};
-use actix_web::error::{JsonPayloadError, ErrorBadRequest};
-use solana_client::client_error::reqwest::Client;
-use solana_program::pubkey;
-use solana_sdk::transaction::Transaction;
-use solana_sdk::{client, native_token::LAMPORTS_PER_SOL, pubkey::{ParsePubkeyError, Pubkey}, signature::{read_keypair_file, Keypair, Signer}, transaction};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::error::ErrorBadRequest;
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::{Keypair, Signer}};
 use solana_client::rpc_client::RpcClient;
-use solana_program::{system_instruction::transfer, system_program};
 use serde::Deserialize;
-use tokio::{ task};
-use std::{fs};
+use tokio::task;
 use serde_json::json;
-use bs58; use std::{io::{self, BufRead}, str::FromStr};
-use spl_token::{instruction as token_instruction, state::Mint};
-use solana_sdk::program_pack::Pack;
+use bs58;
+use std::str::FromStr;
+use spl_token::instruction as token_instruction;
 use base64::{Engine as _, engine::general_purpose};
 use spl_associated_token_account;
 
-struct statename{
-    app_name:String
+struct Statename{
+    app_name: String
 }
+
 #[derive(Deserialize)]
-struct tranfersol{
-    to:String,
-    amount:u64
+struct Airdrop{
+    to: String
 }
+
 #[derive(Deserialize)]
-struct airdrop{
-    to:String
+struct Info{
+    pubkey: String
 }
-#[derive(Deserialize)]
-struct  Info{
-    pubkey:String
-}
-#[derive(Deserialize)]
-struct DevConfig {
-    private_key: String, 
-}
+
 #[derive(Deserialize)]
 struct CreateToken {
     mintAuthority: String,
@@ -79,8 +68,7 @@ struct SendToken {
     amount: u64,
 }
 
-// Custom error handler for JSON parsing
-fn json_error_handler(err: JsonPayloadError, _req: &actix_web::HttpRequest) -> actix_web::Error {
+fn json_error_handler(_err: actix_web::error::JsonPayloadError, _req: &actix_web::HttpRequest) -> actix_web::Error {
     ErrorBadRequest(json!({
         "success": false,
         "error": "Invalid JSON format or missing required fields"
@@ -88,44 +76,42 @@ fn json_error_handler(err: JsonPayloadError, _req: &actix_web::HttpRequest) -> a
 }
 
 #[get("/address/{pubkey}")]
-async fn getbalance(path:web::Path<String>)->impl Responder{
-    println!("cghecc");
-let pubkey=path.into_inner();
-println!("checjk1 {}",pubkey);
-let client = RpcClient::new(rpc_url);
-const rpc_url:&str="https://api.devnet.solana.com"; 
-let Pubkeys=match Pubkey::from_str(&pubkey){
-    Ok(key)=>key,
-    Err(e)=>return HttpResponse::BadRequest().json(json!({
-        "success": false,
-        "error": "Invalid pubkey"
-    }))
-};
-match task::spawn_blocking(move || {
-    client.get_balance(&Pubkeys)
-}).await {
-    Ok(Ok(balance)) => HttpResponse::Ok().json(json!({
-        "success": true,
-        "data": {
-            "pubkey": pubkey,
-            "balance": balance as f64 / 1_000_000_000.0
-        }
-    })),
-    Ok(Err(e)) => HttpResponse::BadRequest().json(json!({
-        "success": false,
-        "error": "RPC error"
-    })),
-    Err(_) => HttpResponse::BadRequest().json(json!({
-        "success": false,
-        "error": "Blocking task failed"
-    })),
-}
+async fn getbalance(path: web::Path<String>) -> impl Responder{
+    let pubkey = path.into_inner();
+    const RPC_URL: &str = "https://api.devnet.solana.com"; 
+    let client = RpcClient::new(RPC_URL);
+    let pubkeys = match Pubkey::from_str(&pubkey){
+        Ok(key) => key,
+        Err(_e) => return HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Invalid pubkey"
+        }))
+    };
+    match task::spawn_blocking(move || {
+        client.get_balance(&pubkeys)
+    }).await {
+        Ok(Ok(balance)) => HttpResponse::Ok().json(json!({
+            "success": true,
+            "data": {
+                "pubkey": pubkey,
+                "balance": balance as f64 / 1_000_000_000.0
+            }
+        })),
+        Ok(Err(_e)) => HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "RPC error"
+        })),
+        Err(_) => HttpResponse::BadRequest().json(json!({
+            "success": false,
+            "error": "Blocking task failed"
+        })),
+    }
 }
 
 #[post("/keypair")]
-async  fn keypair()->impl Responder{
-    let key=Keypair::new();
-    let public_key=key.pubkey().to_string();
+async fn keypair() -> impl Responder{
+    let key = Keypair::new();
+    let public_key = key.pubkey().to_string();
     let secret_key_base58 = bs58::encode(&key.to_bytes()).into_string();
     HttpResponse::Ok().json(json!({
         "success": true,
@@ -137,19 +123,19 @@ async  fn keypair()->impl Responder{
 }
 
 #[get("/infos")]
-async  fn info(query:web::Query<Info>)->impl Responder{
-    let pubkey=&query.pubkey;
-    let Pubkey=match Pubkey::from_str(&pubkey){
-        Ok(key)=>key,
-        Err(e)=>return HttpResponse::BadRequest().json(json!({
+async fn info(query: web::Query<Info>) -> impl Responder{
+    let pubkey = &query.pubkey;
+    let pubkey_parsed = match Pubkey::from_str(&pubkey){
+        Ok(key) => key,
+        Err(_e) => return HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "Invalid pubkey"
         }))
     };
-    let rpc_url="https://api.devnet.solana.com";
-    let client=RpcClient::new(rpc_url);
+    const RPC_URL: &str = "https://api.devnet.solana.com";
+    let client = RpcClient::new(RPC_URL);
     match task::spawn_blocking(move || {
-        client.get_balance(&Pubkey)
+        client.get_balance(&pubkey_parsed)
     }).await {
         Ok(Ok(balance)) => HttpResponse::Ok().json(json!({
             "success": true,
@@ -158,7 +144,7 @@ async  fn info(query:web::Query<Info>)->impl Responder{
                 "balance": balance as f64 / 1_000_000_000.0
             }
         })),
-        Ok(Err(e)) => HttpResponse::BadRequest().json(json!({
+        Ok(Err(_e)) => HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "RPC error"
         })),
@@ -167,11 +153,10 @@ async  fn info(query:web::Query<Info>)->impl Responder{
             "error": "Blocking task failed"
         })),
     }
-       
-    } 
+} 
 
 #[get("/")]
-async  fn hello()->impl Responder{
+async fn hello() -> impl Responder{
     HttpResponse::Ok().json(json!({
         "success": true,
         "data": {
@@ -181,21 +166,20 @@ async  fn hello()->impl Responder{
 }
 
 #[post("/airdrop")]
-async fn airdrops(test:web::Json<airdrop>,)->impl Responder{
-    let to=&test.to;
-    const rpc_url:&str="https://api.devnet.solana.com";
+async fn airdrops(test: web::Json<Airdrop>) -> impl Responder{
+    let to = &test.to;
+    const RPC_URL: &str = "https://api.devnet.solana.com";
     let publickey = match Pubkey::from_str(&to) {
         Ok(key) => key,
-        Err(e) => return HttpResponse::BadRequest().json(json!({
+        Err(_e) => return HttpResponse::BadRequest().json(json!({
             "success": false,
             "error": "Invalid pubkey"
         }))
     };
-    let client = RpcClient::new(rpc_url);   
+    let client = RpcClient::new(RPC_URL);   
     let transaction = task::spawn_blocking(move || {
         client.request_airdrop(&publickey, 2*LAMPORTS_PER_SOL)
     }).await.unwrap();
-    println!("{:?}", transaction);
     match transaction {
          Ok(signature) => HttpResponse::Ok().json(json!({
              "success": true,
@@ -203,13 +187,12 @@ async fn airdrops(test:web::Json<airdrop>,)->impl Responder{
                  "signature": signature.to_string()
              }
          })),
-         Err(err) => HttpResponse::BadRequest().json(json!({
+         Err(_err) => HttpResponse::BadRequest().json(json!({
              "success": false,
              "error": "Airdrop failed"
          }))
      }
 }
-
 
 #[post("/token/create")]
 async fn create_token(req: web::Json<CreateToken>) -> impl Responder {
@@ -342,8 +325,6 @@ async fn sign_message(req: web::Json<SignMessage>) -> impl Responder {
             "error": "Invalid base58 secret key"
         })),
     };
-
-    // Create keypair from secret key
     let keypairs = match Keypair::from_bytes(&secret_bytes) {
         Ok(kp) => kp,
         Err(_) => return HttpResponse::BadRequest().json(json!({
@@ -431,7 +412,7 @@ async fn send_sol(req: web::Json<SendSol>) -> impl Responder {
     if req.lamports == 0 {
         return HttpResponse::BadRequest().json(json!({
             "success": false,
-            "error": "Lamports amount must be greater than 0"
+            "error": "Amount must be greater than 0"
         }));
     }
     let from_pubkey = match Pubkey::from_str(&req.from) {
@@ -453,8 +434,7 @@ async fn send_sol(req: web::Json<SendSol>) -> impl Responder {
         &to_pubkey,
         req.lamports,
     );
-    
-    // According to spec, accounts should be an array of address strings
+
     let accounts: Vec<String> = transfer_ix.accounts.iter().map(|account| {
         account.pubkey.to_string()
     }).collect();
@@ -486,8 +466,6 @@ async fn send_token(req: web::Json<SendToken>) -> impl Responder {
             "error": "Amount must be greater than 0"
         }));
     }
-
-    // Parse the destination token account address
     let destination_pubkey = match Pubkey::from_str(&req.destination) {
         Ok(key) => key,
         Err(_) => return HttpResponse::BadRequest().json(json!({
@@ -495,8 +473,6 @@ async fn send_token(req: web::Json<SendToken>) -> impl Responder {
             "error": "Invalid destination address"
         })),
     };
-
-    // Parse the mint address
     let mint_pubkey = match Pubkey::from_str(&req.mint) {
         Ok(key) => key,
         Err(_) => return HttpResponse::BadRequest().json(json!({
@@ -504,8 +480,6 @@ async fn send_token(req: web::Json<SendToken>) -> impl Responder {
             "error": "Invalid mint address"
         })),
     };
-
-    // Parse the owner address
     let owner_pubkey = match Pubkey::from_str(&req.owner) {
         Ok(key) => key,
         Err(_) => return HttpResponse::BadRequest().json(json!({
@@ -531,16 +505,12 @@ async fn send_token(req: web::Json<SendToken>) -> impl Responder {
             "error": format!("Failed to create transfer instruction: {}", e)
         })),
     };
-
-    // Create accounts array with the requested format (isSigner instead of is_signer)
     let accounts: Vec<serde_json::Value> = transfer_ix.accounts.iter().map(|account| {
         json!({
             "pubkey": account.pubkey.to_string(),
             "isSigner": account.is_signer
         })
     }).collect();
-
-    // Encode instruction data as base64
     let instruction_data = general_purpose::STANDARD.encode(&transfer_ix.data);
 
     HttpResponse::Ok().json(json!({
@@ -554,21 +524,21 @@ async fn send_token(req: web::Json<SendToken>) -> impl Responder {
 }
 
 #[actix_web::main]
-async  fn main()->std::io::Result<()>{
-   HttpServer::new(||{
-    App::new()
-        .app_data(web::JsonConfig::default().error_handler(json_error_handler))
-        .app_data(web::Data::new(statename{app_name:String::from("test")}))
-        .service(hello)
-        .service(airdrops)
-        .service(getbalance)
-        .service(info)
-        .service(keypair)
-        .service(create_token)
-        .service(mint_token)
-        .service(sign_message)
-        .service(verify_message)
-        .service(send_sol)
-        .service(send_token)
-   }).bind(("0.0.0.0",8080))?.run().await
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new()
+            .app_data(web::JsonConfig::default().error_handler(json_error_handler))
+            .app_data(web::Data::new(Statename{app_name:String::from("test")}))
+            .service(hello)
+            .service(airdrops)
+            .service(getbalance)
+            .service(info)
+            .service(keypair)
+            .service(create_token)
+            .service(mint_token)
+            .service(sign_message)
+            .service(verify_message)
+            .service(send_sol)
+            .service(send_token)
+    }).bind(("0.0.0.0", 8080))?.run().await
 }
