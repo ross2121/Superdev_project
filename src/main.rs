@@ -103,34 +103,6 @@ async fn hello() -> impl Responder{
     }))
 }
 
-#[post("/airdrop")]
-async fn airdrops(test: web::Json<Airdrop>) -> impl Responder{
-    let to = &test.to;
-    const RPC_URL: &str = "https://api.devnet.solana.com";
-    let publickey = match Pubkey::from_str(&to) {
-        Ok(key) => key,
-        Err(_e) => return HttpResponse::BadRequest().json(json!({
-            "success": false,
-            "error": "Invalid pubkey"
-        }))
-    };
-    let client = RpcClient::new(RPC_URL);   
-    let transaction = task::spawn_blocking(move || {
-        client.request_airdrop(&publickey, 2*LAMPORTS_PER_SOL)
-    }).await.unwrap();
-    match transaction {
-         Ok(signature) => HttpResponse::Ok().json(json!({
-             "success": true,
-             "data": {
-                 "signature": signature.to_string()
-             }
-         })),
-         Err(_err) => HttpResponse::BadRequest().json(json!({
-             "success": false,
-             "error": "Airdrop failed"
-         }))
-     }
-}
 
 #[post("/token/create")]
 async fn create_token(req: web::Json<CreateToken>) -> impl Responder {
